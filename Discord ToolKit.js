@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         Discord Toolkit — Search & Purge
 // @namespace    discord-toolkit
-// @version      5.0
+// @version      8.0
 // @description  Recherche universelle, suppression en masse, gestion des DM, export de salon en HTML et sortie de serveurs en masse — by Eren
 // @match        https://discord.com/*
 // @match        https://ptb.discord.com/*
 // @match        https://canary.discord.com/*
 // @grant        none
 // @run-at       document-idle
+// @updateURL    https://raw.githubusercontent.com/91qlf/DiscordToolKit/refs/heads/main/Discord%20ToolKit.js
+// @downloadURL  https://raw.githubusercontent.com/91qlf/DiscordToolKit/refs/heads/main/Discord%20ToolKit.js
 // ==/UserScript==
 
 (function () {
