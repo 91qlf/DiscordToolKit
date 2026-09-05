@@ -296,6 +296,56 @@
       .filter((s) => /^\d+$/.test(s));
   }
 
+  // ----- Effets sonores (clics UI) -----
+  let dtkAudioCtx = null;
+  function getAudioCtx() {
+    if (!dtkAudioCtx) {
+      try {
+        dtkAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch (e) {
+        return null;
+      }
+    }
+    return dtkAudioCtx;
+  }
+
+  function isSoundEnabled() {
+    return localStorage.getItem('dtk_sfx_enabled') !== 'off';
+  }
+  function setSoundEnabled(on) {
+    localStorage.setItem('dtk_sfx_enabled', on ? 'on' : 'off');
+  }
+
+  function playClickSound() {
+    if (!isSoundEnabled()) return;
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+
+    filter.type = 'lowpass';
+    filter.frequency.value = 3200;
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1100, now);
+    osc.frequency.exponentialRampToValueAtTime(600, now + 0.06);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.09);
+  }
+
   function embedToText(embed) {
     const parts = [];
     if (embed.title) parts.push(embed.title);
@@ -862,11 +912,16 @@
       #dtk-footer {
         padding: 10px 18px; text-align:center; font-size: 10.5px; color:#5c5f66;
         border-top:1px solid rgba(255,255,255,0.06); letter-spacing:.3px;
-        display:flex; align-items:center; justify-content:center; gap:5px;
+        display:flex; align-items:center; justify-content:center; gap:5px; position:relative;
       }
       #dtk-footer b { color:#8b8f98; font-weight:800; }
       #dtk-footer .dtk-heart { color:#ec4899; animation: dtk-pulse-heart 1.6s ease infinite; display:inline-block; }
       @keyframes dtk-pulse-heart { 0%,100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+      #dtk-sfx-toggle {
+        position:absolute; right:14px; border:none; background:transparent; cursor:pointer;
+        color:#5c5f66; font-size:12px; padding:4px 6px; border-radius:6px; transition: all .15s ease;
+      }
+      #dtk-sfx-toggle:hover { color:#dbdee1; background: rgba(255,255,255,0.05); }
     `;
     document.head.appendChild(style);
 
@@ -1299,9 +1354,27 @@
         </div>
 
       </div>
-      <div id="dtk-footer"><b>Discord Toolkit</b> · by <span class="dtk-heart">♥</span> Eren</div>
+      <div id="dtk-footer"><b>Discord Toolkit</b> · by <span class="dtk-heart">♥</span> Eren<button id="dtk-sfx-toggle" title="Activer/couper les sons de clic"></button></div>
     `;
     document.body.appendChild(panel);
+
+    // ===== Effets sonores : clic délégué sur tout élément interactif du panneau =====
+    panel.addEventListener('click', (e) => {
+      if (e.target.closest('.dtk-btn, .dtk-tab, .dtk-select-trigger, .dtk-select-item, .dtk-close, input[type=checkbox], .st-apply-saved, .st-del-saved, .mr-remove')) {
+        playClickSound();
+      }
+    });
+
+    function refreshSfxToggleIcon() {
+      const btn = document.getElementById('dtk-sfx-toggle');
+      btn.textContent = isSoundEnabled() ? '🔊' : '🔇';
+    }
+    refreshSfxToggleIcon();
+    document.getElementById('dtk-sfx-toggle').addEventListener('click', () => {
+      setSoundEnabled(!isSoundEnabled());
+      refreshSfxToggleIcon();
+      playClickSound();
+    });
 
     // ===== Sélecteurs custom (remplace les <select> natifs) =====
     function buildCustomSelect(selectEl) {
@@ -1360,6 +1433,7 @@
     });
 
     toggleBtn.addEventListener('click', () => {
+      playClickSound();
       panel.style.display = panel.style.display === 'none' || !panel.style.display ? 'flex' : 'none';
     });
     panel.querySelector('.dtk-close').addEventListener('click', () => (panel.style.display = 'none'));
