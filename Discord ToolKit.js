@@ -78,7 +78,7 @@
     return null;
   }
 
-  // ================= UTILITAIRES API =================
+// ================= UTILITAIRES API =================
 
   async function apiFetch(url, token, options = {}, onWait) {
     while (true) {
@@ -226,15 +226,26 @@
     return true;
   }
 
+  function dtkGetStorage() {
+    try {
+      if (typeof localStorage !== 'undefined') return localStorage;
+    } catch (e) {}
+    return null;
+  }
+
   function loadSavedStatuses() {
     try {
-      return JSON.parse(localStorage.getItem('dtk_saved_statuses') || '[]');
+      const storage = dtkGetStorage();
+      return JSON.parse(storage ? (storage.getItem('dtk_saved_statuses') || '[]') : '[]');
     } catch (e) {
       return [];
     }
   }
   function saveSavedStatuses(list) {
-    localStorage.setItem('dtk_saved_statuses', JSON.stringify(list));
+    try {
+      const storage = dtkGetStorage();
+      if (storage) storage.setItem('dtk_saved_statuses', JSON.stringify(list));
+    } catch (e) {}
   }
 
   // ----- Amis / relations -----
@@ -310,10 +321,18 @@
   }
 
   function isSoundEnabled() {
-    return localStorage.getItem('dtk_sfx_enabled') !== 'off';
+    try {
+      const storage = dtkGetStorage();
+      return storage ? storage.getItem('dtk_sfx_enabled') !== 'off' : true;
+    } catch (e) {
+      return true;
+    }
   }
   function setSoundEnabled(on) {
-    localStorage.setItem('dtk_sfx_enabled', on ? 'on' : 'off');
+    try {
+      const storage = dtkGetStorage();
+      if (storage) storage.setItem('dtk_sfx_enabled', on ? 'on' : 'off');
+    } catch (e) {}
   }
 
   function playClickSound() {
@@ -2511,3 +2530,4 @@
     }
   }, 1000);
 })();
+
