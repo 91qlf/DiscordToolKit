@@ -78,7 +78,7 @@
     return null;
   }
 
-// ================= UTILITAIRES API =================
+  // ================= UTILITAIRES API =================
 
   async function apiFetch(url, token, options = {}, onWait) {
     while (true) {
@@ -226,26 +226,15 @@
     return true;
   }
 
-  function dtkGetStorage() {
-    try {
-      if (typeof localStorage !== 'undefined') return localStorage;
-    } catch (e) {}
-    return null;
-  }
-
   function loadSavedStatuses() {
     try {
-      const storage = dtkGetStorage();
-      return JSON.parse(storage ? (storage.getItem('dtk_saved_statuses') || '[]') : '[]');
+      return JSON.parse(localStorage.getItem('dtk_saved_statuses') || '[]');
     } catch (e) {
       return [];
     }
   }
   function saveSavedStatuses(list) {
-    try {
-      const storage = dtkGetStorage();
-      if (storage) storage.setItem('dtk_saved_statuses', JSON.stringify(list));
-    } catch (e) {}
+    localStorage.setItem('dtk_saved_statuses', JSON.stringify(list));
   }
 
   // ----- Amis / relations -----
@@ -307,6 +296,22 @@
       .filter((s) => /^\d+$/.test(s));
   }
 
+  // ----- Paramètres (langue / son / volume) -----
+  const DEFAULT_SETTINGS = { lang: 'fr', soundEnabled: true, volume: 60 };
+  function loadSettings() {
+    try {
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem('dtk_settings') || '{}') };
+    } catch (e) {
+      return { ...DEFAULT_SETTINGS };
+    }
+  }
+  function saveSettings(partial) {
+    const current = loadSettings();
+    const next = { ...current, ...partial };
+    localStorage.setItem('dtk_settings', JSON.stringify(next));
+    return next;
+  }
+
   // ----- Effets sonores (clics UI) -----
   let dtkAudioCtx = null;
   function getAudioCtx() {
@@ -320,27 +325,14 @@
     return dtkAudioCtx;
   }
 
-  function isSoundEnabled() {
-    try {
-      const storage = dtkGetStorage();
-      return storage ? storage.getItem('dtk_sfx_enabled') !== 'off' : true;
-    } catch (e) {
-      return true;
-    }
-  }
-  function setSoundEnabled(on) {
-    try {
-      const storage = dtkGetStorage();
-      if (storage) storage.setItem('dtk_sfx_enabled', on ? 'on' : 'off');
-    } catch (e) {}
-  }
-
   function playClickSound() {
-    if (!isSoundEnabled()) return;
+    const settings = loadSettings();
+    if (!settings.soundEnabled || settings.volume <= 0) return;
     const ctx = getAudioCtx();
     if (!ctx) return;
     if (ctx.state === 'suspended') ctx.resume();
 
+    const peakGain = 0.16 * (settings.volume / 100);
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -354,7 +346,7 @@
     osc.frequency.exponentialRampToValueAtTime(600, now + 0.06);
 
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.004);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, peakGain), now + 0.004);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
 
     osc.connect(filter);
@@ -363,6 +355,60 @@
 
     osc.start(now);
     osc.stop(now + 0.09);
+  }
+
+  // ----- Traductions (ossature de l'interface : onglets, en-tête, paramètres) -----
+  // Note : les libellés de champs et messages de statut à l'intérieur de chaque outil
+  // restent en français pour l'instant — seule l'ossature commune est bilingue ici.
+  const I18N = {
+    fr: {
+      tab_search: '🔍 Recherche',
+      tab_purge: '🗑️ Suppression',
+      tab_guilds: '🚪 Serveurs',
+      tab_closedm: '🔒 Fermer DM',
+      tab_export: '📤 Export',
+      tab_profile: '🪪 Profil',
+      tab_status: '🎭 Statuts',
+      tab_friends: '👥 Amis',
+      tab_deadservers: '💤 Serveurs morts',
+      tab_avatarrotate: '🖼️ Avatar/Bannière',
+      tab_msgrotate: '🔄 Message',
+      header_subtitle: 'Prêt',
+      settings_title: 'Paramètres',
+      settings_language: 'Langue',
+      settings_sound_label: 'Sons de clic',
+      settings_sound_desc: 'Joue un petit son sur les boutons, onglets et cases à cocher.',
+      settings_volume: 'Volume',
+      settings_close: 'Fermer',
+    },
+    en: {
+      tab_search: '🔍 Search',
+      tab_purge: '🗑️ Purge',
+      tab_guilds: '🚪 Servers',
+      tab_closedm: '🔒 Close DMs',
+      tab_export: '📤 Export',
+      tab_profile: '🪪 Profile',
+      tab_status: '🎭 Statuses',
+      tab_friends: '👥 Friends',
+      tab_deadservers: '💤 Dead servers',
+      tab_avatarrotate: '🖼️ Avatar/Banner',
+      tab_msgrotate: '🔄 Message',
+      header_subtitle: 'Ready',
+      settings_title: 'Settings',
+      settings_language: 'Language',
+      settings_sound_label: 'Click sounds',
+      settings_sound_desc: 'Plays a small sound on buttons, tabs and checkboxes.',
+      settings_volume: 'Volume',
+      settings_close: 'Close',
+    },
+  };
+
+  function applyLanguage(panelEl, lang) {
+    const dict = I18N[lang] || I18N.fr;
+    panelEl.querySelectorAll('[data-i18n]').forEach((el) => {
+      const key = el.getAttribute('data-i18n');
+      if (dict[key]) el.textContent = dict[key];
+    });
   }
 
   function embedToText(embed) {
@@ -756,6 +802,54 @@
         background: rgba(255,255,255,0.03);
       }
       #dtk-header .dtk-close:hover { color:#f5b3b3; background: rgba(218,55,60,0.15); }
+      #dtk-header-actions, .dtk-header-actions { display:flex; align-items:center; gap:6px; }
+      .dtk-gear {
+        cursor:pointer; color:#8b8f98; width:26px; height:26px; display:flex;
+        align-items:center; justify-content:center; border-radius:8px; transition: all .18s ease;
+        background: rgba(255,255,255,0.03);
+      }
+      .dtk-gear svg { width:15px; height:15px; }
+      .dtk-gear:hover { color:#c4b5fd; background: rgba(139,92,246,0.15); transform: rotate(35deg); }
+
+      #dtk-settings-overlay {
+        display:none; position:absolute; inset:0; z-index:50; align-items:center; justify-content:center;
+        background: rgba(10,10,12,0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+        border-radius:20px;
+      }
+      #dtk-settings-overlay.open { display:flex; animation: dtk-fadein .16s ease; }
+      #dtk-settings-card {
+        width:86%; background:#1e1f22; border:1px solid rgba(139,92,246,0.3); border-radius:14px;
+        padding:18px 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+      }
+      .dtk-settings-header {
+        display:flex; align-items:center; justify-content:space-between; font-size:14px; font-weight:800;
+        color:#fff; margin-bottom:14px;
+      }
+      .dtk-settings-row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:6px; }
+      .dtk-settings-row-label { font-size:12.5px; color:#dbdee1; font-weight:700; }
+      .dtk-settings-row-desc { font-size:10.5px; color:#8b8f98; margin-top:2px; max-width:240px; }
+      #dtk-set-sound {
+        appearance:none; -webkit-appearance:none; width:38px; height:22px; border-radius:12px;
+        background: rgba(255,255,255,0.12); position:relative; cursor:pointer; flex-shrink:0; transition: background .15s ease;
+      }
+      #dtk-set-sound::after {
+        content:''; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%;
+        background:#dbdee1; transition: all .18s ease;
+      }
+      #dtk-set-sound:checked { background: linear-gradient(135deg,#6366f1,#ec4899); }
+      #dtk-set-sound:checked::after { left:18px; background:#fff; }
+      #dtk-set-volume {
+        width:100%; margin-top:6px; -webkit-appearance:none; appearance:none; height:5px; border-radius:5px;
+        background: rgba(255,255,255,0.12); outline:none;
+      }
+      #dtk-set-volume::-webkit-slider-thumb {
+        -webkit-appearance:none; appearance:none; width:15px; height:15px; border-radius:50%;
+        background: linear-gradient(135deg,#6366f1,#ec4899); cursor:pointer; box-shadow: 0 2px 6px rgba(139,92,246,0.5);
+      }
+      #dtk-set-volume::-moz-range-thumb {
+        width:15px; height:15px; border-radius:50%; border:none;
+        background: linear-gradient(135deg,#6366f1,#ec4899); cursor:pointer; box-shadow: 0 2px 6px rgba(139,92,246,0.5);
+      }
 
       #dtk-tabs { display:flex; flex-wrap:wrap; gap:4px; padding: 12px 16px 10px; position:relative; z-index:2; box-shadow: 0 8px 12px -6px rgba(0,0,0,0.45); }
       .dtk-tab {
@@ -936,17 +1030,13 @@
       #dtk-footer b { color:#8b8f98; font-weight:800; }
       #dtk-footer .dtk-heart { color:#ec4899; animation: dtk-pulse-heart 1.6s ease infinite; display:inline-block; }
       @keyframes dtk-pulse-heart { 0%,100% { transform: scale(1); } 50% { transform: scale(1.25); } }
-      #dtk-sfx-toggle {
-        position:absolute; right:14px; border:none; background:transparent; cursor:pointer;
-        color:#5c5f66; font-size:12px; padding:4px 6px; border-radius:6px; transition: all .15s ease;
-      }
-      #dtk-sfx-toggle:hover { color:#dbdee1; background: rgba(255,255,255,0.05); }
     `;
     document.head.appendChild(style);
 
     const searchIcon = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="7" stroke="white" stroke-width="2.2"/><path d="M20 20L16.5 16.5" stroke="white" stroke-width="2.2" stroke-linecap="round"/></svg>`;
     const trashIcon = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 7H20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M6 7L7 20H17L18 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 7V4H15V7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
     const boltIcon = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 3L4 14H11L10 21L20 9H13L13 3Z" fill="currentColor"/></svg>`;
+    const gearIcon = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5c.04-.33.06-.66.06-1s-.02-.67-.06-1l2.02-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.38.96a7.4 7.4 0 0 0-1.73-1l-.36-2.53a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.53c-.63.24-1.21.58-1.73 1l-2.38-.96a.5.5 0 0 0-.6.22L2.7 9.28a.5.5 0 0 0 .12.64L4.84 11.5c-.04.33-.06.66-.06 1s.02.67.06 1L2.82 15.08a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.4.32.6.22l2.38-.96c.52.42 1.1.76 1.73 1l.36 2.53c.05.24.26.42.5.42h3.84c.24 0 .45-.18.5-.42l.36-2.53a7.4 7.4 0 0 0 1.73-1l2.38.96c.24.1.46.02.6-.22l1.92-3.32a.5.5 0 0 0-.12-.64L19.4 13.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
 
     const toggleBtn = document.createElement('button');
     toggleBtn.id = 'dtk-toggle';
@@ -993,24 +1083,53 @@
           <div class="dtk-title-icon">${boltIcon}</div>
           <div class="dtk-title-text">
             <b>Discord Toolkit</b>
-            <span><span class="dtk-dot"></span>Prêt</span>
+            <span><span class="dtk-dot"></span><span data-i18n="header_subtitle">Prêt</span></span>
           </div>
         </div>
-        <div class="dtk-close">✕</div>
+        <div class="dtk-header-actions">
+          <div class="dtk-gear" id="dtk-settings-btn" title="Paramètres">${gearIcon}</div>
+          <div class="dtk-close">✕</div>
+        </div>
       </div>
 
       <div id="dtk-tabs">
-        <div class="dtk-tab active" data-tab="search">🔍 Recherche</div>
-        <div class="dtk-tab" data-tab="purge">🗑️ Suppression</div>
-        <div class="dtk-tab" data-tab="guilds">🚪 Serveurs</div>
-        <div class="dtk-tab" data-tab="closedm">🔒 Fermer DM</div>
-        <div class="dtk-tab" data-tab="export">📤 Export</div>
-        <div class="dtk-tab" data-tab="profile">🪪 Profil</div>
-        <div class="dtk-tab" data-tab="status">🎭 Statuts</div>
-        <div class="dtk-tab" data-tab="friends">👥 Amis</div>
-        <div class="dtk-tab" data-tab="deadservers">💤 Serveurs morts</div>
-        <div class="dtk-tab" data-tab="avatarrotate">🖼️ Avatar/Bannière</div>
-        <div class="dtk-tab" data-tab="msgrotate">🔄 Message</div>
+        <div class="dtk-tab active" data-tab="search" data-i18n="tab_search">🔍 Recherche</div>
+        <div class="dtk-tab" data-tab="purge" data-i18n="tab_purge">🗑️ Suppression</div>
+        <div class="dtk-tab" data-tab="guilds" data-i18n="tab_guilds">🚪 Serveurs</div>
+        <div class="dtk-tab" data-tab="closedm" data-i18n="tab_closedm">🔒 Fermer DM</div>
+        <div class="dtk-tab" data-tab="export" data-i18n="tab_export">📤 Export</div>
+        <div class="dtk-tab" data-tab="profile" data-i18n="tab_profile">🪪 Profil</div>
+        <div class="dtk-tab" data-tab="status" data-i18n="tab_status">🎭 Statuts</div>
+        <div class="dtk-tab" data-tab="friends" data-i18n="tab_friends">👥 Amis</div>
+        <div class="dtk-tab" data-tab="deadservers" data-i18n="tab_deadservers">💤 Serveurs morts</div>
+        <div class="dtk-tab" data-tab="avatarrotate" data-i18n="tab_avatarrotate">🖼️ Avatar/Bannière</div>
+        <div class="dtk-tab" data-tab="msgrotate" data-i18n="tab_msgrotate">🔄 Message</div>
+      </div>
+
+      <div id="dtk-settings-overlay">
+        <div id="dtk-settings-card">
+          <div class="dtk-settings-header">
+            <span data-i18n="settings_title">Paramètres</span>
+            <div class="dtk-close" id="dtk-settings-close">✕</div>
+          </div>
+
+          <label data-i18n="settings_language">Langue</label>
+          <select id="dtk-set-lang">
+            <option value="fr">Français</option>
+            <option value="en">English</option>
+          </select>
+
+          <div class="dtk-settings-row">
+            <div>
+              <div class="dtk-settings-row-label" data-i18n="settings_sound_label">Sons de clic</div>
+              <div class="dtk-settings-row-desc" data-i18n="settings_sound_desc">Joue un petit son sur les boutons, onglets et cases à cocher.</div>
+            </div>
+            <input type="checkbox" id="dtk-set-sound" />
+          </div>
+
+          <label data-i18n="settings_volume">Volume</label>
+          <input type="range" id="dtk-set-volume" min="0" max="100" step="5" />
+        </div>
       </div>
 
       <div id="dtk-body">
@@ -1373,25 +1492,54 @@
         </div>
 
       </div>
-      <div id="dtk-footer"><b>Discord Toolkit</b> · by <span class="dtk-heart">♥</span> Eren<button id="dtk-sfx-toggle" title="Activer/couper les sons de clic"></button></div>
+      <div id="dtk-footer"><b>Discord Toolkit</b> · by <span class="dtk-heart">♥</span> Eren</div>
     `;
     document.body.appendChild(panel);
 
     // ===== Effets sonores : clic délégué sur tout élément interactif du panneau =====
     panel.addEventListener('click', (e) => {
-      if (e.target.closest('.dtk-btn, .dtk-tab, .dtk-select-trigger, .dtk-select-item, .dtk-close, input[type=checkbox], .st-apply-saved, .st-del-saved, .mr-remove')) {
+      if (e.target.closest('.dtk-btn, .dtk-tab, .dtk-select-trigger, .dtk-select-item, .dtk-close, .dtk-gear, input[type=checkbox], .st-apply-saved, .st-del-saved, .mr-remove')) {
         playClickSound();
       }
     });
 
-    function refreshSfxToggleIcon() {
-      const btn = document.getElementById('dtk-sfx-toggle');
-      btn.textContent = isSoundEnabled() ? '🔊' : '🔇';
-    }
-    refreshSfxToggleIcon();
-    document.getElementById('dtk-sfx-toggle').addEventListener('click', () => {
-      setSoundEnabled(!isSoundEnabled());
-      refreshSfxToggleIcon();
+    // ===== Paramètres (langue / son / volume) =====
+    const currentSettings = loadSettings();
+    applyLanguage(panel, currentSettings.lang);
+
+    const settingsOverlay = document.getElementById('dtk-settings-overlay');
+    const langSelect = document.getElementById('dtk-set-lang');
+    const soundToggle = document.getElementById('dtk-set-sound');
+    const volumeSlider = document.getElementById('dtk-set-volume');
+
+    langSelect.value = currentSettings.lang;
+    soundToggle.checked = currentSettings.soundEnabled;
+    volumeSlider.value = currentSettings.volume;
+    volumeSlider.disabled = !currentSettings.soundEnabled;
+
+    document.getElementById('dtk-settings-btn').addEventListener('click', () => {
+      settingsOverlay.classList.add('open');
+    });
+    document.getElementById('dtk-settings-close').addEventListener('click', () => {
+      settingsOverlay.classList.remove('open');
+    });
+    settingsOverlay.addEventListener('click', (e) => {
+      if (e.target === settingsOverlay) settingsOverlay.classList.remove('open');
+    });
+
+    langSelect.addEventListener('change', (e) => {
+      saveSettings({ lang: e.target.value });
+      applyLanguage(panel, e.target.value);
+    });
+    soundToggle.addEventListener('change', (e) => {
+      saveSettings({ soundEnabled: e.target.checked });
+      volumeSlider.disabled = !e.target.checked;
+      if (e.target.checked) playClickSound();
+    });
+    volumeSlider.addEventListener('input', (e) => {
+      saveSettings({ volume: parseInt(e.target.value, 10) });
+    });
+    volumeSlider.addEventListener('change', () => {
       playClickSound();
     });
 
@@ -2530,4 +2678,3 @@
     }
   }, 1000);
 })();
-
